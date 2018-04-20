@@ -1,0 +1,25 @@
+
+{% extends 'base.html' %}
+
+{% block body %}
+
+<div class="container">
+    <div class="row">
+        {% for result in session.search_results %}
+        <div class="col-3 border m-3">
+            <img src="{{result['image_url']}}" alt="">
+            <p class="text-center">{{result['title']}}</p>
+            {% if session.user_id %}
+            {% if (session['likes'])[result['show_id']] %}
+            <a href="{{url_for('unlike',show_id=result['show_id'])}}">Unlike</a>
+            {% else %}
+            <a href="{{url_for('like',show_id=result['show_id'])}}">Like</a>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% endblock %}
+
