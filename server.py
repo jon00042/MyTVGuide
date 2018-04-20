@@ -17,18 +17,17 @@ TVMAZE_API = 'http://api.tvmaze.com/'
 
 @app.route('/')
 def index():
-    if ('did_search' not in session):
-        session['did_search'] = False
-    if (not session['did_search']):
+    if ('shows' not in session):
         session['shows'] = []
     session['likes'] = {}
     if ('user_id' in session):
+        redo_shows = len(session['shows']) == 0
         user = db.get_user_by_id(session['user_id'])
         likes = user.likes.all()
         if (type(likes) == list):
             for like in likes:
                 (session['likes'])[str(like.show_id)] = 1
-                if (not session['did_search']):
+                if (redo_shows):
                     show_item = {}
                     show_item['title'] = like.show.title
                     show_item['image_url'] = like.show.image_url
@@ -36,11 +35,15 @@ def index():
                     if show_item['image_url'] is None:
                         show_item['image_url'] = url_for('static', filename='images/no-photo.jpg')
                     session['shows'].append(show_item)
-        print(session)
-    else:
-        print(session)
-        session['did_search'] = False
+    print(session)
     return render_template('index.html')
+
+@app.route('/reset')
+def reset():
+    if ('have_search' in session):
+        del(session['have_search'])
+    session['shows'] = []
+    return redirect(url_for('index'))
 
 @app.route('/register_form')
 def register_form():
@@ -141,17 +144,21 @@ def search():
         if show_item['image_url'] is None:
             show_item['image_url'] = url_for('static', filename='images/no-photo.jpg')
         session['shows'].append(show_item)
-    session['did_search'] = True
+    session['have_search'] = 1
     return redirect(url_for('index'))
 
 @app.route('/like/<show_id>')
 def like(show_id):
     db.add_like(session['user_id'], show_id)
+    if ('have_search' not in session):
+        session['shows'] = []
     return redirect(url_for('index'))
 
 @app.route('/unlike/<show_id>')
 def unlike(show_id):
     db.del_like(session['user_id'], show_id)
+    if ('have_search' not in session):
+        session['shows'] = []
     return redirect(url_for('index'))
 
 app.run(debug=True)
