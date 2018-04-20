@@ -17,15 +17,33 @@ TVMAZE_API = 'http://api.tvmaze.com/'
 
 @app.route('/')
 def index():
-    if ('likes' not in session):
-        session['likes'] = {}
-    print(session)
+    if ('did_search' not in session):
+        session['did_search'] = False
+    if (not session['did_search']):
+        session['shows'] = []
+    session['likes'] = {}
+    if ('user_id' in session):
+        user = db.get_user_by_id(session['user_id'])
+        likes = user.likes.all()
+        if (type(likes) == list):
+            for like in likes:
+                (session['likes'])[str(like.show_id)] = 1
+                if (not session['did_search']):
+                    show_item = {}
+                    show_item['title'] = like.show.title
+                    show_item['image_url'] = like.show.image_url
+                    show_item['show_id'] = str(like.show.id)
+                    if show_item['image_url'] is None:
+                        show_item['image_url'] = url_for('static', filename='images/no-photo.jpg')
+                    session['shows'].append(show_item)
+        print(session)
+    else:
+        print(session)
+        session['did_search'] = False
     return render_template('index.html')
 
 @app.route('/register_form')
 def register_form():
-    if ('user_id' in session):  # in case someone navigates manually
-        return redirect(url_for('index'))
     return render_template('register_form.html')
 
 @app.route('/register', methods=['POST'])
@@ -50,15 +68,13 @@ def register():
         flash('internal error: {}'.format(ex))
     if (user is None):
         return redirect(url_for('register_form'))
+    session.clear()
     session['user_id'] = user.id
     session['fullname'] = user.fullname
-    session['likes'] = {}
-    return redirect(url_for('index'))
+    return redirect(url_for('home'))
 
 @app.route('/login_form')
 def login_form():
-    if ('user_id' in session):  # in case someone navigates manually
-        return redirect(url_for('index'))
     return render_template('login_form.html')
 
 @app.route('/login', methods=['POST'])
@@ -78,26 +94,19 @@ def login():
     if (not bcrypt.checkpw(request.form['password'].encode('UTF-8'), user.hashed_pw)):
         flash('failed login attempt!')
         return redirect(url_for('login_form'))
+    session.clear()
     session['user_id'] = user.id
     session['fullname'] = user.fullname
-    liked_shows = {}
-    likes = user.likes.all()
-    if (likes is not None and type(likes) == list):
-        for like in likes:
-            liked_shows[like.show_id] = 1
-    session['likes'] = liked_shows
     return redirect(url_for('index'))
 
 @app.route('/logout')
 def logout():
-    del session['user_id']
-    del session['fullname']
-    del session['likes']
+    session.clear()
     return redirect(url_for('index'))
 
 @app.route('/search', methods=['POST'])
 def search():
-    session['search_results'] = []
+    session['shows'] = []
     if (len(request.form['text']) == 0):
         return redirect(url_for('index'))
     safe_search_text = urllib.parse.quote(request.form['text'])
@@ -119,36 +128,30 @@ def search():
         if (type(show_kv) != dict or 'id' not in show_kv or 'name' not in show_kv):
             print('  no \'id\' or \'name\' key in \'show\' json!')
             continue
-        result = {}
-        result['api_id'] = show_kv['id']
-        result['title'] = show_kv['name']
-        if (result['api_id'] is None or result['title'] is None):
+        if (show_kv['id'] is None or show_kv['name'] is None):
             print('  null \'id\' or \'name\' in \'show\' json!')
             continue
-        result['image_url'] = None
+        show_item = {}
+        show_item['title'] = show_kv['name']
+        show_item['image_url'] = None
         if ('image' in show_kv and type(show_kv['image']) == dict and 'medium' in (show_kv['image'])):
-            result['image_url'] = (show_kv['image'])['medium']
-        show = db.save_show(result['api_id'], result['title'], result['image_url'])
-        result['show_id'] = str(show.id)
-        if result['image_url'] is None:
-            result['image_url'] = url_for('static', filename='images/no-photo.jpg')
-        session['search_results'].append(result)
+            show_item['image_url'] = (show_kv['image'])['medium']
+        show = db.save_show(show_kv['id'], show_item['title'], show_item['image_url'])
+        show_item['show_id'] = str(show.id)
+        if show_item['image_url'] is None:
+            show_item['image_url'] = url_for('static', filename='images/no-photo.jpg')
+        session['shows'].append(show_item)
+    session['did_search'] = True
     return redirect(url_for('index'))
 
 @app.route('/like/<show_id>')
 def like(show_id):
     db.add_like(session['user_id'], show_id)
-    likes_kv = session['likes']
-    likes_kv[str(show_id)] = 1
-    session['likes'] = likes_kv
     return redirect(url_for('index'))
 
 @app.route('/unlike/<show_id>')
 def unlike(show_id):
     db.del_like(session['user_id'], show_id)
-    likes_kv = session['likes']
-    del likes_kv[str(show_id)]
-    session['likes'] = likes_kv
     return redirect(url_for('index'))
 
 app.run(debug=True)
